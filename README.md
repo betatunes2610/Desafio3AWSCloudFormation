@@ -1,4 +1,3 @@
-# Desafio3AWSCloudFormation
 # README.md — Laboratório: AWS CloudFormation
 
 ## Sumário
