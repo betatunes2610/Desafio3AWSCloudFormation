@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Bucket S3 com notificação para Lambda processar arquivos CSV"
+
+Resources:
+  ## 1. Bucket S3
+  MeuBucketCSV:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: meu-bucket-csv-processamento
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+     
+
+  ## 2. Bucket Policy
+  MyBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref MeuBucketCSV
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: ['s3:GetObject', 's3:PutObject']
+            Resource: !Sub "arn:aws:s3:::meu-bucket-csv-processamento/*"
+
+  ## 3. Lambda Function
+  ProcessaCSVLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: processa-csv-lambda
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.13
+      Code:
+        ZipFile: |
+          import boto3
+          import csv
+
+          def lambda_handler(event, context):
+              s3 = boto3.client('s3')
+              
+              # Pega o bucket e o arquivo do evento
+              bucket = "meu-bucket-csv-processamento"
+              key = "usuarios.csv"
+              
+              print(f"Novo arquivo recebido: s3://{bucket}/{key}")
+              
+              # Faz download do CSV
+              response = s3.get_object(Bucket=bucket, Key=key)
+              linhas = response['Body'].read().decode('utf-8').splitlines()
+              reader = csv.reader(linhas)
+              
+              for row in reader:
+                  print(row)  # aqui você processa cada linha
+
+              return {"status": "sucesso", "arquivo": key}
+  ## 5. IAM Role para Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: 
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ## 4. Permissão S3 -> Lambda
+  PermissaoS3ParaLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ProcessaCSVLambda
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt MeuBucketCSV.Arn
+
+
+Outputs:
+  NomeDoBucket:
+    Description: "Nome do bucket criado"
+    Value: !Ref MeuBucketCSV
+
+  NomeDaLambda:
+    Description: "Nome da Lambda criada"
+    Value: !Ref ProcessaCSVLambda
